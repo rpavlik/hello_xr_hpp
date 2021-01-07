@@ -53,6 +53,9 @@ target_include_directories(hello_xr_hpp
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/src/common
 
+    # OpenXR-Hpp
+    ${PROJECT_SOURCE_DIR}/include
+
     # for helper headers
     ${PROJECT_SOURCE_DIR}/external/include
 )

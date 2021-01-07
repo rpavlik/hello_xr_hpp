@@ -13,6 +13,10 @@
 #include <array>
 #include <cmath>
 
+#include <openxr/openxr_dispatch_dynamic.hpp>
+#include <openxr/openxr_handles.hpp>
+#include <openxr/openxr_method_impls.hpp>
+
 namespace {
 
 #if !defined(XR_USE_PLATFORM_WIN32)
@@ -88,31 +92,30 @@ XrPosef RotateCCWAboutYAxis(float radians, XrVector3f translation) {
 }  // namespace Pose
 }  // namespace Math
 
-inline XrReferenceSpaceCreateInfo GetXrReferenceSpaceCreateInfo(const std::string& referenceSpaceTypeStr) {
-    XrReferenceSpaceCreateInfo referenceSpaceCreateInfo{XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
-    referenceSpaceCreateInfo.poseInReferenceSpace = Math::Pose::Identity();
+inline xr::ReferenceSpaceCreateInfo GetXrReferenceSpaceCreateInfo(const std::string& referenceSpaceTypeStr) {
+    xr::ReferenceSpaceCreateInfo referenceSpaceCreateInfo;
     if (EqualsIgnoreCase(referenceSpaceTypeStr, "View")) {
-        referenceSpaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+        referenceSpaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::View;
     } else if (EqualsIgnoreCase(referenceSpaceTypeStr, "ViewFront")) {
         // Render head-locked 2m in front of device.
-        referenceSpaceCreateInfo.poseInReferenceSpace = Math::Pose::Translation({0.f, 0.f, -2.f}),
-        referenceSpaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+        referenceSpaceCreateInfo.poseInReferenceSpace = xr::Posef{{}, {0.f, 0.f, -2.f}};
+        referenceSpaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::View;
     } else if (EqualsIgnoreCase(referenceSpaceTypeStr, "Local")) {
-        referenceSpaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
+        referenceSpaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::Local;
     } else if (EqualsIgnoreCase(referenceSpaceTypeStr, "Stage")) {
-        referenceSpaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+        referenceSpaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::Stage;
     } else if (EqualsIgnoreCase(referenceSpaceTypeStr, "StageLeft")) {
-        referenceSpaceCreateInfo.poseInReferenceSpace = Math::Pose::RotateCCWAboutYAxis(0.f, {-2.f, 0.f, -2.f});
-        referenceSpaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+        *put(referenceSpaceCreateInfo.poseInReferenceSpace) = Math::Pose::RotateCCWAboutYAxis(0.f, {-2.f, 0.f, -2.f});
+        referenceSpaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::Stage;
     } else if (EqualsIgnoreCase(referenceSpaceTypeStr, "StageRight")) {
-        referenceSpaceCreateInfo.poseInReferenceSpace = Math::Pose::RotateCCWAboutYAxis(0.f, {2.f, 0.f, -2.f});
-        referenceSpaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+        *put(referenceSpaceCreateInfo.poseInReferenceSpace) = Math::Pose::RotateCCWAboutYAxis(0.f, {2.f, 0.f, -2.f});
+        referenceSpaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::Stage;
     } else if (EqualsIgnoreCase(referenceSpaceTypeStr, "StageLeftRotated")) {
-        referenceSpaceCreateInfo.poseInReferenceSpace = Math::Pose::RotateCCWAboutYAxis(3.14f / 3.f, {-2.f, 0.5f, -2.f});
-        referenceSpaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+        *put(referenceSpaceCreateInfo.poseInReferenceSpace) = Math::Pose::RotateCCWAboutYAxis(3.14f / 3.f, {-2.f, 0.5f, -2.f});
+        referenceSpaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::Stage;
     } else if (EqualsIgnoreCase(referenceSpaceTypeStr, "StageRightRotated")) {
-        referenceSpaceCreateInfo.poseInReferenceSpace = Math::Pose::RotateCCWAboutYAxis(-3.14f / 3.f, {2.f, 0.5f, -2.f});
-        referenceSpaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
+        *put(referenceSpaceCreateInfo.poseInReferenceSpace) = Math::Pose::RotateCCWAboutYAxis(-3.14f / 3.f, {2.f, 0.5f, -2.f});
+        referenceSpaceCreateInfo.referenceSpaceType = xr::ReferenceSpaceType::Stage;
     } else {
         throw std::invalid_argument(Fmt("Unknown reference space type '%s'", referenceSpaceTypeStr.c_str()));
     }
@@ -120,6 +123,8 @@ inline XrReferenceSpaceCreateInfo GetXrReferenceSpaceCreateInfo(const std::strin
 }
 
 struct OpenXrProgram : IOpenXrProgram {
+    xr::DispatchLoaderDynamic dispatch;
+
     OpenXrProgram(const std::shared_ptr<Options>& options, const std::shared_ptr<IPlatformPlugin>& platformPlugin,
                   const std::shared_ptr<IGraphicsPlugin>& graphicsPlugin)
         : m_options(options), m_platformPlugin(platformPlugin), m_graphicsPlugin(graphicsPlugin) {}
@@ -156,19 +161,10 @@ struct OpenXrProgram : IOpenXrProgram {
     static void LogLayersAndExtensions() {
         // Write out extension properties for a given layer.
         const auto logExtensions = [](const char* layerName, int indent = 0) {
-            uint32_t instanceExtensionCount;
-            CHECK_XRCMD(xrEnumerateInstanceExtensionProperties(layerName, 0, &instanceExtensionCount, nullptr));
-
-            std::vector<XrExtensionProperties> extensions(instanceExtensionCount);
-            for (XrExtensionProperties& extension : extensions) {
-                extension.type = XR_TYPE_EXTENSION_PROPERTIES;
-            }
-
-            CHECK_XRCMD(xrEnumerateInstanceExtensionProperties(layerName, (uint32_t)extensions.size(), &instanceExtensionCount,
-                                                               extensions.data()));
+            std::vector<xr::ExtensionProperties> extensions = xr::enumerateInstanceExtensionPropertiesToVector(layerName);
 
             const std::string indentStr(indent, ' ');
-            Log::Write(Log::Level::Verbose, Fmt("%sAvailable Extensions: (%d)", indentStr.c_str(), instanceExtensionCount));
+            Log::Write(Log::Level::Verbose, Fmt("%sAvailable Extensions: (%d)", indentStr.c_str(), extensions.size()));
             for (const XrExtensionProperties& extension : extensions) {
                 Log::Write(Log::Level::Verbose, Fmt("%s  Name=%s SpecVersion=%d", indentStr.c_str(), extension.extensionName,
                                                     extension.extensionVersion));
@@ -180,17 +176,8 @@ struct OpenXrProgram : IOpenXrProgram {
 
         // Log layers and any of their extensions.
         {
-            uint32_t layerCount;
-            CHECK_XRCMD(xrEnumerateApiLayerProperties(0, &layerCount, nullptr));
-
-            std::vector<XrApiLayerProperties> layers(layerCount);
-            for (XrApiLayerProperties& layer : layers) {
-                layer.type = XR_TYPE_API_LAYER_PROPERTIES;
-            }
-
-            CHECK_XRCMD(xrEnumerateApiLayerProperties((uint32_t)layers.size(), &layerCount, layers.data()));
-
-            Log::Write(Log::Level::Info, Fmt("Available Layers: (%d)", layerCount));
+            std::vector<xr::ApiLayerProperties> layers = xr::enumerateApiLayerPropertiesToVector();
+            Log::Write(Log::Level::Info, Fmt("Available Layers: (%d)", layers.size()));
             for (const XrApiLayerProperties& layer : layers) {
                 Log::Write(Log::Level::Verbose,
                            Fmt("  Name=%s SpecVersion=%s LayerVersion=%d Description=%s", layer.layerName,
@@ -202,12 +189,9 @@ struct OpenXrProgram : IOpenXrProgram {
 
     void LogInstanceInfo() {
         CHECK(m_instance != XR_NULL_HANDLE);
-
-        XrInstanceProperties instanceProperties{XR_TYPE_INSTANCE_PROPERTIES};
-        CHECK_XRCMD(xrGetInstanceProperties(m_instance, &instanceProperties));
-
+        xr::InstanceProperties instanceProperties = xr::Instance(m_instance).getInstanceProperties();
         Log::Write(Log::Level::Info, Fmt("Instance RuntimeName=%s RuntimeVersion=%s", instanceProperties.runtimeName,
-                                         GetXrVersionString(instanceProperties.runtimeVersion).c_str()));
+                                         to_string(instanceProperties.runtimeVersion).c_str()));
     }
 
     void CreateInstanceInternal() {
@@ -224,15 +208,18 @@ struct OpenXrProgram : IOpenXrProgram {
         std::transform(graphicsExtensions.begin(), graphicsExtensions.end(), std::back_inserter(extensions),
                        [](const std::string& ext) { return ext.c_str(); });
 
-        XrInstanceCreateInfo createInfo{XR_TYPE_INSTANCE_CREATE_INFO};
-        createInfo.next = m_platformPlugin->GetInstanceCreateExtension();
-        createInfo.enabledExtensionCount = (uint32_t)extensions.size();
-        createInfo.enabledExtensionNames = extensions.data();
+        xr::InstanceCreateInfo createInfo{{},
+                                          xr::ApplicationInfo{"HelloXR_Hpp", 0, nullptr, 0, xr::Version::current()},
+                                          0,
+                                          nullptr,
+                                          (uint32_t)extensions.size(),
+                                          extensions.data(),
+                                          m_platformPlugin->GetInstanceCreateExtension()};
 
-        strcpy(createInfo.applicationInfo.applicationName, "HelloXR");
-        createInfo.applicationInfo.apiVersion = XR_CURRENT_API_VERSION;
+        // Here, we are just using OpenXR-Hpp to make creation of the structs easier.
+        CHECK_XRCMD(xrCreateInstance(get(createInfo), &m_instance));
 
-        CHECK_XRCMD(xrCreateInstance(&createInfo, &m_instance));
+        dispatch = xr::DispatchLoaderDynamic{m_instance};
     }
 
     void CreateInstance() override {
@@ -247,67 +234,59 @@ struct OpenXrProgram : IOpenXrProgram {
         CHECK(m_instance != XR_NULL_HANDLE);
         CHECK(m_systemId != XR_NULL_SYSTEM_ID);
 
-        uint32_t viewConfigTypeCount;
-        CHECK_XRCMD(xrEnumerateViewConfigurations(m_instance, m_systemId, 0, &viewConfigTypeCount, nullptr));
-        std::vector<XrViewConfigurationType> viewConfigTypes(viewConfigTypeCount);
-        CHECK_XRCMD(xrEnumerateViewConfigurations(m_instance, m_systemId, viewConfigTypeCount, &viewConfigTypeCount,
-                                                  viewConfigTypes.data()));
-        CHECK((uint32_t)viewConfigTypes.size() == viewConfigTypeCount);
+        xr::Instance instance{m_instance};
+        xr::SystemId systemId{m_systemId};
 
-        Log::Write(Log::Level::Info, Fmt("Available View Configuration Types: (%d)", viewConfigTypeCount));
-        for (XrViewConfigurationType viewConfigType : viewConfigTypes) {
-            Log::Write(Log::Level::Verbose, Fmt("  View Configuration Type: %s %s", to_string(viewConfigType),
-                                                viewConfigType == m_viewConfigType ? "(Selected)" : ""));
+        std::vector<xr::ViewConfigurationType> viewConfigTypes = instance.enumerateViewConfigurationsToVector(systemId);
 
-            XrViewConfigurationProperties viewConfigProperties{XR_TYPE_VIEW_CONFIGURATION_PROPERTIES};
-            CHECK_XRCMD(xrGetViewConfigurationProperties(m_instance, m_systemId, viewConfigType, &viewConfigProperties));
+        Log::Write(Log::Level::Info, Fmt("Available View Configuration Types: (%d)", viewConfigTypes.size()));
+        for (xr::ViewConfigurationType viewConfigType : viewConfigTypes) {
+            Log::Write(Log::Level::Verbose, Fmt("  View Configuration Type: %s %s", to_string(viewConfigType).c_str(),
+                                                get(viewConfigType) == m_viewConfigType ? "(Selected)" : ""));
+
+            xr::ViewConfigurationProperties viewConfigProperties =
+                instance.getViewConfigurationProperties(systemId, viewConfigType);
 
             Log::Write(Log::Level::Verbose,
                        Fmt("  View configuration FovMutable=%s", viewConfigProperties.fovMutable == XR_TRUE ? "True" : "False"));
 
-            uint32_t viewCount;
-            CHECK_XRCMD(xrEnumerateViewConfigurationViews(m_instance, m_systemId, viewConfigType, 0, &viewCount, nullptr));
-            if (viewCount > 0) {
-                std::vector<XrViewConfigurationView> views(viewCount, {XR_TYPE_VIEW_CONFIGURATION_VIEW});
-                CHECK_XRCMD(
-                    xrEnumerateViewConfigurationViews(m_instance, m_systemId, viewConfigType, viewCount, &viewCount, views.data()));
+            std::vector<xr::ViewConfigurationView> views =
+                instance.enumerateViewConfigurationViewsToVector(systemId, viewConfigType);
 
-                for (uint32_t i = 0; i < views.size(); i++) {
-                    const XrViewConfigurationView& view = views[i];
+            for (uint32_t i = 0; i < views.size(); i++) {
+                const XrViewConfigurationView& view = views[i];
 
-                    Log::Write(Log::Level::Verbose, Fmt("    View [%d]: Recommended Width=%d Height=%d SampleCount=%d", i,
-                                                        view.recommendedImageRectWidth, view.recommendedImageRectHeight,
-                                                        view.recommendedSwapchainSampleCount));
-                    Log::Write(Log::Level::Verbose,
-                               Fmt("    View [%d]:     Maximum Width=%d Height=%d SampleCount=%d", i, view.maxImageRectWidth,
-                                   view.maxImageRectHeight, view.maxSwapchainSampleCount));
-                }
-            } else {
+                Log::Write(Log::Level::Verbose,
+                           Fmt("    View [%d]: Recommended Width=%d Height=%d SampleCount=%d", i, view.recommendedImageRectWidth,
+                               view.recommendedImageRectHeight, view.recommendedSwapchainSampleCount));
+                Log::Write(Log::Level::Verbose, Fmt("    View [%d]:     Maximum Width=%d Height=%d SampleCount=%d", i,
+                                                    view.maxImageRectWidth, view.maxImageRectHeight, view.maxSwapchainSampleCount));
+            }
+            if (views.empty()) {
                 Log::Write(Log::Level::Error, Fmt("Empty view configuration type"));
             }
 
-            LogEnvironmentBlendMode(viewConfigType);
+            LogEnvironmentBlendMode(get(viewConfigType));
         }
     }
 
     void LogEnvironmentBlendMode(XrViewConfigurationType type) {
         CHECK(m_instance != XR_NULL_HANDLE);
         CHECK(m_systemId != 0);
+        xr::Instance instance{m_instance};
+        xr::SystemId systemId{m_systemId};
 
-        uint32_t count;
-        CHECK_XRCMD(xrEnumerateEnvironmentBlendModes(m_instance, m_systemId, type, 0, &count, nullptr));
-        CHECK(count > 0);
+        std::vector<xr::EnvironmentBlendMode> blendModes =
+            instance.enumerateEnvironmentBlendModesToVector(systemId, xr::ViewConfigurationType(type));
+        CHECK(!blendModes.empty());
 
-        Log::Write(Log::Level::Info, Fmt("Available Environment Blend Mode count : (%d)", count));
-
-        std::vector<XrEnvironmentBlendMode> blendModes(count);
-        CHECK_XRCMD(xrEnumerateEnvironmentBlendModes(m_instance, m_systemId, type, count, &count, blendModes.data()));
+        Log::Write(Log::Level::Info, Fmt("Available Environment Blend Mode count : (%d)", blendModes.size()));
 
         bool blendModeFound = false;
-        for (XrEnvironmentBlendMode mode : blendModes) {
-            const bool blendModeMatch = (mode == m_environmentBlendMode);
+        for (xr::EnvironmentBlendMode mode : blendModes) {
+            const bool blendModeMatch = (get(mode) == m_environmentBlendMode);
             Log::Write(Log::Level::Info,
-                       Fmt("Environment Blend Mode (%s) : %s", to_string(mode), blendModeMatch ? "(Selected)" : ""));
+                       Fmt("Environment Blend Mode (%s) : %s", to_string(mode).c_str(), blendModeMatch ? "(Selected)" : ""));
             blendModeFound |= blendModeMatch;
         }
         CHECK(blendModeFound);
@@ -316,14 +295,14 @@ struct OpenXrProgram : IOpenXrProgram {
     void InitializeSystem() override {
         CHECK(m_instance != XR_NULL_HANDLE);
         CHECK(m_systemId == XR_NULL_SYSTEM_ID);
+        xr::Instance instance{m_instance};
 
         m_formFactor = GetXrFormFactor(m_options->FormFactor);
         m_viewConfigType = GetXrViewConfigurationType(m_options->ViewConfiguration);
         m_environmentBlendMode = GetXrEnvironmentBlendMode(m_options->EnvironmentBlendMode);
 
-        XrSystemGetInfo systemInfo{XR_TYPE_SYSTEM_GET_INFO};
-        systemInfo.formFactor = m_formFactor;
-        CHECK_XRCMD(xrGetSystem(m_instance, &systemInfo, &m_systemId));
+        xr::SystemId systemId = instance.getSystem(xr::SystemGetInfo{xr::FormFactor(m_formFactor)});
+        m_systemId = get(systemId);
 
         Log::Write(Log::Level::Verbose, Fmt("Using system %d for form factor %s", m_systemId, to_string(m_formFactor)));
         CHECK(m_instance != XR_NULL_HANDLE);
@@ -338,15 +317,12 @@ struct OpenXrProgram : IOpenXrProgram {
 
     void LogReferenceSpaces() {
         CHECK(m_session != XR_NULL_HANDLE);
+        xr::Session session{m_session};
+        std::vector<xr::ReferenceSpaceType> spaces = session.enumerateReferenceSpacesToVector();
 
-        uint32_t spaceCount;
-        CHECK_XRCMD(xrEnumerateReferenceSpaces(m_session, 0, &spaceCount, nullptr));
-        std::vector<XrReferenceSpaceType> spaces(spaceCount);
-        CHECK_XRCMD(xrEnumerateReferenceSpaces(m_session, spaceCount, &spaceCount, spaces.data()));
-
-        Log::Write(Log::Level::Info, Fmt("Available reference spaces: %d", spaceCount));
-        for (XrReferenceSpaceType space : spaces) {
-            Log::Write(Log::Level::Verbose, Fmt("  Name: %s", to_string(space)));
+        Log::Write(Log::Level::Info, Fmt("Available reference spaces: %d", spaces.size()));
+        for (xr::ReferenceSpaceType space : spaces) {
+            Log::Write(Log::Level::Verbose, Fmt("  Name: %s", to_string(space).c_str()));
         }
     }
 
@@ -363,104 +339,87 @@ struct OpenXrProgram : IOpenXrProgram {
     };
 
     void InitializeActions() {
+        CHECK(m_instance != XR_NULL_HANDLE);
+        xr::Instance instance{m_instance};
+
         // Create an action set.
-        {
-            XrActionSetCreateInfo actionSetInfo{XR_TYPE_ACTION_SET_CREATE_INFO};
-            strcpy_s(actionSetInfo.actionSetName, "gameplay");
-            strcpy_s(actionSetInfo.localizedActionSetName, "Gameplay");
-            actionSetInfo.priority = 0;
-            CHECK_XRCMD(xrCreateActionSet(m_instance, &actionSetInfo, &m_input.actionSet));
-        }
+        xr::ActionSet actionSet = instance.createActionSet(xr::ActionSetCreateInfo{"gameplay", "Gameplay", 0});
+        m_input.actionSet = get(actionSet);
 
         // Get the XrPath for the left and right hands - we will use them as subaction paths.
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left", &m_input.handSubactionPath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right", &m_input.handSubactionPath[Side::RIGHT]));
+        m_input.handSubactionPath[Side::LEFT] = get(instance.stringToPath("/user/hand/left"));
+        m_input.handSubactionPath[Side::RIGHT] = get(instance.stringToPath("/user/hand/right"));
 
         // Create actions.
         {
             // Create an input action for grabbing objects with the left and right hands.
-            XrActionCreateInfo actionInfo{XR_TYPE_ACTION_CREATE_INFO};
-            actionInfo.actionType = XR_ACTION_TYPE_FLOAT_INPUT;
-            strcpy_s(actionInfo.actionName, "grab_object");
-            strcpy_s(actionInfo.localizedActionName, "Grab Object");
-            actionInfo.countSubactionPaths = uint32_t(m_input.handSubactionPath.size());
-            actionInfo.subactionPaths = m_input.handSubactionPath.data();
-            CHECK_XRCMD(xrCreateAction(m_input.actionSet, &actionInfo, &m_input.grabAction));
+            m_input.grabAction = get(actionSet.createAction(
+                xr::ActionCreateInfo{"grab_object", xr::ActionType::FloatInput, uint32_t(m_input.handSubactionPath.size()),
+                                     (const xr::Path*)m_input.handSubactionPath.data(), "Grab Object"}));
 
             // Create an input action getting the left and right hand poses.
-            actionInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
-            strcpy_s(actionInfo.actionName, "hand_pose");
-            strcpy_s(actionInfo.localizedActionName, "Hand Pose");
-            actionInfo.countSubactionPaths = uint32_t(m_input.handSubactionPath.size());
-            actionInfo.subactionPaths = m_input.handSubactionPath.data();
-            CHECK_XRCMD(xrCreateAction(m_input.actionSet, &actionInfo, &m_input.poseAction));
+            m_input.poseAction = get(actionSet.createAction(
+                xr::ActionCreateInfo{"hand_pose", xr::ActionType::PoseInput, uint32_t(m_input.handSubactionPath.size()),
+                                     (const xr::Path*)m_input.handSubactionPath.data(), "Hand Pose"}));
 
             // Create output actions for vibrating the left and right controller.
-            actionInfo.actionType = XR_ACTION_TYPE_VIBRATION_OUTPUT;
-            strcpy_s(actionInfo.actionName, "vibrate_hand");
-            strcpy_s(actionInfo.localizedActionName, "Vibrate Hand");
-            actionInfo.countSubactionPaths = uint32_t(m_input.handSubactionPath.size());
-            actionInfo.subactionPaths = m_input.handSubactionPath.data();
-            CHECK_XRCMD(xrCreateAction(m_input.actionSet, &actionInfo, &m_input.vibrateAction));
+            m_input.vibrateAction = get(actionSet.createAction(
+                xr::ActionCreateInfo{"vibrate_hand", xr::ActionType::VibrationOutput, uint32_t(m_input.handSubactionPath.size()),
+                                     (const xr::Path*)m_input.handSubactionPath.data(), "Vibrate Hand"}));
 
             // Create input actions for quitting the session using the left and right controller.
             // Since it doesn't matter which hand did this, we do not specify subaction paths for it.
             // We will just suggest bindings for both hands, where possible.
-            actionInfo.actionType = XR_ACTION_TYPE_BOOLEAN_INPUT;
-            strcpy_s(actionInfo.actionName, "quit_session");
-            strcpy_s(actionInfo.localizedActionName, "Quit Session");
-            actionInfo.countSubactionPaths = 0;
-            actionInfo.subactionPaths = nullptr;
-            CHECK_XRCMD(xrCreateAction(m_input.actionSet, &actionInfo, &m_input.quitAction));
+            m_input.quitAction = get(actionSet.createAction(
+                xr::ActionCreateInfo{"quit_session", xr::ActionType::BooleanInput, 0, nullptr, "Quit Session"}));
         }
 
-        std::array<XrPath, Side::COUNT> selectPath;
-        std::array<XrPath, Side::COUNT> squeezeValuePath;
-        std::array<XrPath, Side::COUNT> squeezeForcePath;
-        std::array<XrPath, Side::COUNT> squeezeClickPath;
-        std::array<XrPath, Side::COUNT> posePath;
-        std::array<XrPath, Side::COUNT> hapticPath;
-        std::array<XrPath, Side::COUNT> menuClickPath;
-        std::array<XrPath, Side::COUNT> bClickPath;
-        std::array<XrPath, Side::COUNT> triggerValuePath;
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/input/select/click", &selectPath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/input/select/click", &selectPath[Side::RIGHT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/input/squeeze/value", &squeezeValuePath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/input/squeeze/value", &squeezeValuePath[Side::RIGHT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/input/squeeze/force", &squeezeForcePath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/input/squeeze/force", &squeezeForcePath[Side::RIGHT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/input/squeeze/click", &squeezeClickPath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/input/squeeze/click", &squeezeClickPath[Side::RIGHT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/input/grip/pose", &posePath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/input/grip/pose", &posePath[Side::RIGHT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/output/haptic", &hapticPath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/output/haptic", &hapticPath[Side::RIGHT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/input/menu/click", &menuClickPath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/input/menu/click", &menuClickPath[Side::RIGHT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/input/b/click", &bClickPath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/input/b/click", &bClickPath[Side::RIGHT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/left/input/trigger/value", &triggerValuePath[Side::LEFT]));
-        CHECK_XRCMD(xrStringToPath(m_instance, "/user/hand/right/input/trigger/value", &triggerValuePath[Side::RIGHT]));
+        std::array<xr::Path, Side::COUNT> selectPath;
+        std::array<xr::Path, Side::COUNT> squeezeValuePath;
+        std::array<xr::Path, Side::COUNT> squeezeForcePath;
+        std::array<xr::Path, Side::COUNT> squeezeClickPath;
+        std::array<xr::Path, Side::COUNT> posePath;
+        std::array<xr::Path, Side::COUNT> hapticPath;
+        std::array<xr::Path, Side::COUNT> menuClickPath;
+        std::array<xr::Path, Side::COUNT> bClickPath;
+        std::array<xr::Path, Side::COUNT> triggerValuePath;
+        selectPath[Side::LEFT] = instance.stringToPath("/user/hand/left/input/select/click");
+        selectPath[Side::RIGHT] = instance.stringToPath("/user/hand/right/input/select/click");
+        squeezeValuePath[Side::LEFT] = instance.stringToPath("/user/hand/left/input/squeeze/value");
+        squeezeValuePath[Side::RIGHT] = instance.stringToPath("/user/hand/right/input/squeeze/value");
+        squeezeForcePath[Side::LEFT] = instance.stringToPath("/user/hand/left/input/squeeze/force");
+        squeezeForcePath[Side::RIGHT] = instance.stringToPath("/user/hand/right/input/squeeze/force");
+        squeezeClickPath[Side::LEFT] = instance.stringToPath("/user/hand/left/input/squeeze/click");
+        squeezeClickPath[Side::RIGHT] = instance.stringToPath("/user/hand/right/input/squeeze/click");
+        posePath[Side::LEFT] = instance.stringToPath("/user/hand/left/input/grip/pose");
+        posePath[Side::RIGHT] = instance.stringToPath("/user/hand/right/input/grip/pose");
+        hapticPath[Side::LEFT] = instance.stringToPath("/user/hand/left/output/haptic");
+        hapticPath[Side::RIGHT] = instance.stringToPath("/user/hand/right/output/haptic");
+        menuClickPath[Side::LEFT] = instance.stringToPath("/user/hand/left/input/menu/click");
+        menuClickPath[Side::RIGHT] = instance.stringToPath("/user/hand/right/input/menu/click");
+        bClickPath[Side::LEFT] = instance.stringToPath("/user/hand/left/input/b/click");
+        bClickPath[Side::RIGHT] = instance.stringToPath("/user/hand/right/input/b/click");
+        triggerValuePath[Side::LEFT] = instance.stringToPath("/user/hand/left/input/trigger/value");
+        triggerValuePath[Side::RIGHT] = instance.stringToPath("/user/hand/right/input/trigger/value");
+
         // Suggest bindings for KHR Simple.
         {
-            XrPath khrSimpleInteractionProfilePath;
-            CHECK_XRCMD(
-                xrStringToPath(m_instance, "/interaction_profiles/khr/simple_controller", &khrSimpleInteractionProfilePath));
-            std::vector<XrActionSuggestedBinding> bindings{{// Fall back to a click input for the grab action.
-                                                            {m_input.grabAction, selectPath[Side::LEFT]},
-                                                            {m_input.grabAction, selectPath[Side::RIGHT]},
-                                                            {m_input.poseAction, posePath[Side::LEFT]},
-                                                            {m_input.poseAction, posePath[Side::RIGHT]},
-                                                            {m_input.quitAction, menuClickPath[Side::LEFT]},
-                                                            {m_input.quitAction, menuClickPath[Side::RIGHT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::LEFT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
-            XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-            suggestedBindings.interactionProfile = khrSimpleInteractionProfilePath;
-            suggestedBindings.suggestedBindings = bindings.data();
-            suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
-            CHECK_XRCMD(xrSuggestInteractionProfileBindings(m_instance, &suggestedBindings));
+            auto khrSimpleInteractionProfilePath = instance.stringToPath("/interaction_profiles/khr/simple_controller");
+            std::vector<xr::ActionSuggestedBinding> bindings{
+                {// Fall back to a click input for the grab action.
+                 xr::ActionSuggestedBinding{xr::Action(m_input.grabAction), selectPath[Side::LEFT]},
+                 xr::ActionSuggestedBinding{xr::Action(m_input.grabAction), selectPath[Side::RIGHT]},
+                 xr::ActionSuggestedBinding{xr::Action(m_input.poseAction), posePath[Side::LEFT]},
+                 xr::ActionSuggestedBinding{xr::Action(m_input.poseAction), posePath[Side::RIGHT]},
+                 xr::ActionSuggestedBinding{xr::Action(m_input.quitAction), menuClickPath[Side::LEFT]},
+                 xr::ActionSuggestedBinding{xr::Action(m_input.quitAction), menuClickPath[Side::RIGHT]},
+                 xr::ActionSuggestedBinding{xr::Action(m_input.vibrateAction), hapticPath[Side::LEFT]},
+                 xr::ActionSuggestedBinding{xr::Action(m_input.vibrateAction), hapticPath[Side::RIGHT]}}};
+
+            instance.suggestInteractionProfileBindings(
+                {khrSimpleInteractionProfilePath, uint32_t(bindings.size()), bindings.data()});
         }
+#if 0
         // Suggest bindings for the Oculus Touch.
         {
             XrPath oculusTouchInteractionProfilePath;
@@ -538,31 +497,27 @@ struct OpenXrProgram : IOpenXrProgram {
             suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
             CHECK_XRCMD(xrSuggestInteractionProfileBindings(m_instance, &suggestedBindings));
         }
-        XrActionSpaceCreateInfo actionSpaceInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
-        actionSpaceInfo.action = m_input.poseAction;
-        actionSpaceInfo.poseInActionSpace.orientation.w = 1.f;
-        actionSpaceInfo.subactionPath = m_input.handSubactionPath[Side::LEFT];
-        CHECK_XRCMD(xrCreateActionSpace(m_session, &actionSpaceInfo, &m_input.handSpace[Side::LEFT]));
-        actionSpaceInfo.subactionPath = m_input.handSubactionPath[Side::RIGHT];
-        CHECK_XRCMD(xrCreateActionSpace(m_session, &actionSpaceInfo, &m_input.handSpace[Side::RIGHT]));
+#endif
+        xr::Session session{m_session};
+        m_input.handSpace[Side::LEFT] = get(session.createActionSpace(
+            xr::ActionSpaceCreateInfo{xr::Action{m_input.poseAction}, xr::Path(m_input.handSubactionPath[Side::LEFT]), {}}));
+        m_input.handSpace[Side::RIGHT] = get(session.createActionSpace(
+            xr::ActionSpaceCreateInfo{xr::Action{m_input.poseAction}, xr::Path(m_input.handSubactionPath[Side::RIGHT]), {}}));
 
-        XrSessionActionSetsAttachInfo attachInfo{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
-        attachInfo.countActionSets = 1;
-        attachInfo.actionSets = &m_input.actionSet;
-        CHECK_XRCMD(xrAttachSessionActionSets(m_session, &attachInfo));
+        session.attachSessionActionSets({1, &actionSet});
     }
 
     void CreateVisualizedSpaces() {
         CHECK(m_session != XR_NULL_HANDLE);
+        xr::Session session{m_session};
 
         std::string visualizedSpaces[] = {"ViewFront",        "Local", "Stage", "StageLeft", "StageRight", "StageLeftRotated",
                                           "StageRightRotated"};
 
         for (const auto& visualizedSpace : visualizedSpaces) {
-            XrReferenceSpaceCreateInfo referenceSpaceCreateInfo = GetXrReferenceSpaceCreateInfo(visualizedSpace);
-            XrSpace space;
-            XrResult res = xrCreateReferenceSpace(m_session, &referenceSpaceCreateInfo, &space);
-            if (XR_SUCCEEDED(res)) {
+            xr::Space space;
+            xr::Result res = session.createReferenceSpace(GetXrReferenceSpaceCreateInfo(visualizedSpace), space);
+            if (succeeded(res)) {
                 m_visualizedSpaces.push_back(space);
             } else {
                 Log::Write(Log::Level::Warning,
@@ -575,33 +530,32 @@ struct OpenXrProgram : IOpenXrProgram {
         CHECK(m_instance != XR_NULL_HANDLE);
         CHECK(m_session == XR_NULL_HANDLE);
 
+        xr::Instance instance{m_instance};
         {
             Log::Write(Log::Level::Verbose, Fmt("Creating session..."));
 
-            XrSessionCreateInfo createInfo{XR_TYPE_SESSION_CREATE_INFO};
-            createInfo.next = m_graphicsPlugin->GetGraphicsBinding();
-            createInfo.systemId = m_systemId;
-            CHECK_XRCMD(xrCreateSession(m_instance, &createInfo, &m_session));
+            m_session = get(instance.createSession(
+                xr::SessionCreateInfo{{}, xr::SystemId(m_systemId), m_graphicsPlugin->GetGraphicsBinding()}));
         }
 
         LogReferenceSpaces();
         InitializeActions();
         CreateVisualizedSpaces();
 
-        {
-            XrReferenceSpaceCreateInfo referenceSpaceCreateInfo = GetXrReferenceSpaceCreateInfo(m_options->AppSpace);
-            CHECK_XRCMD(xrCreateReferenceSpace(m_session, &referenceSpaceCreateInfo, &m_appSpace));
-        }
+        xr::Session session{m_session};
+        m_appSpace = get(session.createReferenceSpace(GetXrReferenceSpaceCreateInfo(m_options->AppSpace)));
     }
 
     void CreateSwapchains() override {
         CHECK(m_session != XR_NULL_HANDLE);
         CHECK(m_swapchains.empty());
         CHECK(m_configViews.empty());
+        xr::Instance instance{m_instance};
+        xr::SystemId systemId{m_systemId};
+        xr::Session session{m_session};
 
         // Read graphics properties for preferred swapchain length and logging.
-        XrSystemProperties systemProperties{XR_TYPE_SYSTEM_PROPERTIES};
-        CHECK_XRCMD(xrGetSystemProperties(m_instance, m_systemId, &systemProperties));
+        xr::SystemProperties systemProperties = instance.getSystemProperties(systemId);
 
         // Log system properties.
         Log::Write(Log::Level::Info,
@@ -620,24 +574,15 @@ struct OpenXrProgram : IOpenXrProgram {
         CHECK_MSG(m_viewConfigType == XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, "Unsupported view configuration type");
 
         // Query and cache view configuration views.
-        uint32_t viewCount;
-        CHECK_XRCMD(xrEnumerateViewConfigurationViews(m_instance, m_systemId, m_viewConfigType, 0, &viewCount, nullptr));
-        m_configViews.resize(viewCount, {XR_TYPE_VIEW_CONFIGURATION_VIEW});
-        CHECK_XRCMD(xrEnumerateViewConfigurationViews(m_instance, m_systemId, m_viewConfigType, viewCount, &viewCount,
-                                                      m_configViews.data()));
+        m_configViews = instance.enumerateViewConfigurationViewsToVector(systemId, xr::ViewConfigurationType(m_viewConfigType));
 
         // Create and cache view buffer for xrLocateViews later.
-        m_views.resize(viewCount, {XR_TYPE_VIEW});
+        m_views.resize(m_configViews.size(), {XR_TYPE_VIEW});
 
         // Create the swapchain and get the images.
-        if (viewCount > 0) {
+        if (!m_configViews.empty()) {
             // Select a swapchain format.
-            uint32_t swapchainFormatCount;
-            CHECK_XRCMD(xrEnumerateSwapchainFormats(m_session, 0, &swapchainFormatCount, nullptr));
-            std::vector<int64_t> swapchainFormats(swapchainFormatCount);
-            CHECK_XRCMD(xrEnumerateSwapchainFormats(m_session, (uint32_t)swapchainFormats.size(), &swapchainFormatCount,
-                                                    swapchainFormats.data()));
-            CHECK(swapchainFormatCount == swapchainFormats.size());
+            std::vector<int64_t> swapchainFormats = session.enumerateSwapchainFormatsToVector();
             m_colorSwapchainFormat = m_graphicsPlugin->SelectColorSwapchainFormat(swapchainFormats);
 
             // Print swapchain formats and the selected one.
@@ -656,16 +601,16 @@ struct OpenXrProgram : IOpenXrProgram {
                 }
                 Log::Write(Log::Level::Verbose, Fmt("Swapchain Formats: %s", swapchainFormatsString.c_str()));
             }
-
+            const auto viewCount = m_configViews.size();
             // Create a swapchain for each view.
             for (uint32_t i = 0; i < viewCount; i++) {
-                const XrViewConfigurationView& vp = m_configViews[i];
+                const xr::ViewConfigurationView& vp = m_configViews[i];
                 Log::Write(Log::Level::Info,
                            Fmt("Creating swapchain for view %d with dimensions Width=%d Height=%d SampleCount=%d", i,
                                vp.recommendedImageRectWidth, vp.recommendedImageRectHeight, vp.recommendedSwapchainSampleCount));
 
                 // Create the swapchain.
-                XrSwapchainCreateInfo swapchainCreateInfo{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+                xr::SwapchainCreateInfo swapchainCreateInfo;
                 swapchainCreateInfo.arraySize = 1;
                 swapchainCreateInfo.format = m_colorSwapchainFormat;
                 swapchainCreateInfo.width = vp.recommendedImageRectWidth;
@@ -673,11 +618,11 @@ struct OpenXrProgram : IOpenXrProgram {
                 swapchainCreateInfo.mipCount = 1;
                 swapchainCreateInfo.faceCount = 1;
                 swapchainCreateInfo.sampleCount = m_graphicsPlugin->GetSupportedSwapchainSampleCount(vp);
-                swapchainCreateInfo.usageFlags = XR_SWAPCHAIN_USAGE_SAMPLED_BIT | XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+                swapchainCreateInfo.usageFlags = xr::SwapchainUsageFlagBits::Sampled | xr::SwapchainUsageFlagBits::ColorAttachment;
                 Swapchain swapchain;
                 swapchain.width = swapchainCreateInfo.width;
                 swapchain.height = swapchainCreateInfo.height;
-                CHECK_XRCMD(xrCreateSwapchain(m_session, &swapchainCreateInfo, &swapchain.handle));
+                swapchain.handle = get(session.createSwapchain(swapchainCreateInfo));
 
                 m_swapchains.push_back(swapchain);
 
@@ -695,23 +640,21 @@ struct OpenXrProgram : IOpenXrProgram {
 
     // Return event if one is available, otherwise return null.
     const XrEventDataBaseHeader* TryReadNextEvent() {
-        // It is sufficient to clear the just the XrEventDataBuffer header to
-        // XR_TYPE_EVENT_DATA_BUFFER
-        XrEventDataBaseHeader* baseHeader = reinterpret_cast<XrEventDataBaseHeader*>(&m_eventDataBuffer);
-        *baseHeader = {XR_TYPE_EVENT_DATA_BUFFER};
-        const XrResult xr = xrPollEvent(m_instance, &m_eventDataBuffer);
-        if (xr == XR_SUCCESS) {
-            if (baseHeader->type == XR_TYPE_EVENT_DATA_EVENTS_LOST) {
-                const XrEventDataEventsLost* const eventsLost = reinterpret_cast<const XrEventDataEventsLost*>(baseHeader);
-                Log::Write(Log::Level::Warning, Fmt("%d events lost", eventsLost));
+        m_eventDataBuffer = {};
+        xr::Result res = xr::Instance(m_instance).pollEvent(m_eventDataBuffer);
+        if (unqualifiedSuccess(res)) {
+            XrEventDataBaseHeader* baseHeader = reinterpret_cast<XrEventDataBaseHeader*>(&m_eventDataBuffer);
+            if (m_eventDataBuffer.type == xr::StructureType::EventDataEventsLost) {
+                const xr::EventDataEventsLost* const eventsLost = reinterpret_cast<const xr::EventDataEventsLost*>(baseHeader);
+                Log::Write(Log::Level::Warning, Fmt("%d events lost", eventsLost->lostEventCount));
             }
 
-            return baseHeader;
+            return reinterpret_cast<const XrEventDataBaseHeader*>(baseHeader);
         }
-        if (xr == XR_EVENT_UNAVAILABLE) {
+        if (res == xr::Result::EventUnavailable) {
             return nullptr;
         }
-        THROW_XR(xr, "xrPollEvent");
+        THROW_XR(get(res), "xrPollEvent");
     }
 
     void PollEvents(bool* exitRenderLoop, bool* requestRestart) override {
@@ -802,26 +745,16 @@ struct OpenXrProgram : IOpenXrProgram {
 
         std::string sourceName;
         for (uint32_t i = 0; i < pathCount; ++i) {
-            constexpr XrInputSourceLocalizedNameFlags all = XR_INPUT_SOURCE_LOCALIZED_NAME_USER_PATH_BIT |
-                                                            XR_INPUT_SOURCE_LOCALIZED_NAME_INTERACTION_PROFILE_BIT |
-                                                            XR_INPUT_SOURCE_LOCALIZED_NAME_COMPONENT_BIT;
-
-            XrInputSourceLocalizedNameGetInfo nameInfo = {XR_TYPE_INPUT_SOURCE_LOCALIZED_NAME_GET_INFO};
-            nameInfo.sourcePath = paths[i];
-            nameInfo.whichComponents = all;
-
-            uint32_t size = 0;
-            CHECK_XRCMD(xrGetInputSourceLocalizedName(m_session, &nameInfo, 0, &size, nullptr));
-            if (size < 1) {
+            std::string grabSource = xr::Session(m_session).getInputSourceLocalizedName(
+                {xr::Path(paths[i]), xr::InputSourceLocalizedNameFlagBits::AllBits});
+            if (grabSource.empty()) {
                 continue;
             }
-            std::vector<char> grabSource(size);
-            CHECK_XRCMD(xrGetInputSourceLocalizedName(m_session, &nameInfo, uint32_t(grabSource.size()), &size, grabSource.data()));
             if (!sourceName.empty()) {
                 sourceName += " and ";
             }
             sourceName += "'";
-            sourceName += std::string(grabSource.data(), size - 1);
+            sourceName += grabSource;
             sourceName += "'";
         }
 
@@ -1021,7 +954,7 @@ struct OpenXrProgram : IOpenXrProgram {
     XrEnvironmentBlendMode m_environmentBlendMode{XR_ENVIRONMENT_BLEND_MODE_OPAQUE};
     XrSystemId m_systemId{XR_NULL_SYSTEM_ID};
 
-    std::vector<XrViewConfigurationView> m_configViews;
+    std::vector<xr::ViewConfigurationView> m_configViews;
     std::vector<Swapchain> m_swapchains;
     std::map<XrSwapchain, std::vector<XrSwapchainImageBaseHeader*>> m_swapchainImages;
     std::vector<XrView> m_views;
@@ -1033,7 +966,7 @@ struct OpenXrProgram : IOpenXrProgram {
     XrSessionState m_sessionState{XR_SESSION_STATE_UNKNOWN};
     bool m_sessionRunning{false};
 
-    XrEventDataBuffer m_eventDataBuffer;
+    xr::EventDataBuffer m_eventDataBuffer;
     InputState m_input;
 };
 }  // namespace

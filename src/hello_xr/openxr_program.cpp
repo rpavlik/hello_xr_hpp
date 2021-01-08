@@ -32,35 +32,35 @@ inline std::string GetXrVersionString(XrVersion ver) {
     return Fmt("%d.%d.%d", XR_VERSION_MAJOR(ver), XR_VERSION_MINOR(ver), XR_VERSION_PATCH(ver));
 }
 
-inline XrFormFactor GetXrFormFactor(const std::string& formFactorStr) {
+inline xr::FormFactor GetXrFormFactor(const std::string& formFactorStr) {
     if (EqualsIgnoreCase(formFactorStr, "Hmd")) {
-        return XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
+        return xr::FormFactor::HeadMountedDisplay;
     }
     if (EqualsIgnoreCase(formFactorStr, "Handheld")) {
-        return XR_FORM_FACTOR_HANDHELD_DISPLAY;
+        return xr::FormFactor::HandheldDisplay;
     }
     throw std::invalid_argument(Fmt("Unknown form factor '%s'", formFactorStr.c_str()));
 }
 
-inline XrViewConfigurationType GetXrViewConfigurationType(const std::string& viewConfigurationStr) {
+inline xr::ViewConfigurationType GetXrViewConfigurationType(const std::string& viewConfigurationStr) {
     if (EqualsIgnoreCase(viewConfigurationStr, "Mono")) {
-        return XR_VIEW_CONFIGURATION_TYPE_PRIMARY_MONO;
+        return xr::ViewConfigurationType::PrimaryMono;
     }
     if (EqualsIgnoreCase(viewConfigurationStr, "Stereo")) {
-        return XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+        return xr::ViewConfigurationType::PrimaryStereo;
     }
     throw std::invalid_argument(Fmt("Unknown view configuration '%s'", viewConfigurationStr.c_str()));
 }
 
-inline XrEnvironmentBlendMode GetXrEnvironmentBlendMode(const std::string& environmentBlendModeStr) {
+inline xr::EnvironmentBlendMode GetXrEnvironmentBlendMode(const std::string& environmentBlendModeStr) {
     if (EqualsIgnoreCase(environmentBlendModeStr, "Opaque")) {
-        return XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+        return xr::EnvironmentBlendMode::Opaque;
     }
     if (EqualsIgnoreCase(environmentBlendModeStr, "Additive")) {
-        return XR_ENVIRONMENT_BLEND_MODE_ADDITIVE;
+        return xr::EnvironmentBlendMode::Additive;
     }
     if (EqualsIgnoreCase(environmentBlendModeStr, "AlphaBlend")) {
-        return XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND;
+        return xr::EnvironmentBlendMode::AlphaBlend;
     }
     throw std::invalid_argument(Fmt("Unknown environment blend mode '%s'", environmentBlendModeStr.c_str()));
 }
@@ -127,31 +127,31 @@ struct OpenXrProgram : IOpenXrProgram {
         : m_options(options), m_platformPlugin(platformPlugin), m_graphicsPlugin(graphicsPlugin) {}
 
     ~OpenXrProgram() override {
-        if (m_input.actionSet != XR_NULL_HANDLE) {
+        if (m_input.actionSet) {
             for (auto hand : {Side::LEFT, Side::RIGHT}) {
-                xrDestroySpace(m_input.handSpace[hand]);
+                m_input.handSpace[hand].destroy();
             }
-            xrDestroyActionSet(m_input.actionSet);
+            m_input.actionSet.destroy();
         }
 
-        for (Swapchain swapchain : m_swapchains) {
+        for (Swapchain& swapchain : m_swapchains) {
             xrDestroySwapchain(swapchain.handle);
         }
 
-        for (XrSpace visualizedSpace : m_visualizedSpaces) {
-            xrDestroySpace(visualizedSpace);
+        for (xr::Space& visualizedSpace : m_visualizedSpaces) {
+            visualizedSpace.destroy();
         }
 
-        if (m_appSpace != XR_NULL_HANDLE) {
-            xrDestroySpace(m_appSpace);
+        if (m_appSpace) {
+            m_appSpace.destroy();
         }
 
-        if (m_session != XR_NULL_HANDLE) {
-            xrDestroySession(m_session);
+        if (m_session) {
+            m_session.destroy();
         }
 
-        if (m_instance != XR_NULL_HANDLE) {
-            xrDestroyInstance(m_instance);
+        if (m_instance) {
+            m_instance.destroy();
         }
     }
 
@@ -238,7 +238,7 @@ struct OpenXrProgram : IOpenXrProgram {
         Log::Write(Log::Level::Info, Fmt("Available View Configuration Types: (%d)", viewConfigTypes.size()));
         for (xr::ViewConfigurationType viewConfigType : viewConfigTypes) {
             Log::Write(Log::Level::Verbose, Fmt("  View Configuration Type: %s %s", to_string(viewConfigType).c_str(),
-                                                get(viewConfigType) == m_viewConfigType ? "(Selected)" : ""));
+                                                viewConfigType == m_viewConfigType ? "(Selected)" : ""));
 
             xr::ViewConfigurationProperties viewConfigProperties =
                 m_instance.getViewConfigurationProperties(m_systemId, viewConfigType);
@@ -262,23 +262,22 @@ struct OpenXrProgram : IOpenXrProgram {
                 Log::Write(Log::Level::Error, Fmt("Empty view configuration type"));
             }
 
-            LogEnvironmentBlendMode(get(viewConfigType));
+            LogEnvironmentBlendMode(viewConfigType);
         }
     }
 
-    void LogEnvironmentBlendMode(XrViewConfigurationType type) {
+    void LogEnvironmentBlendMode(xr::ViewConfigurationType type) {
         CHECK(m_instance);
         CHECK(m_systemId);
 
-        std::vector<xr::EnvironmentBlendMode> blendModes =
-            m_instance.enumerateEnvironmentBlendModesToVector(m_systemId, xr::ViewConfigurationType(type));
+        std::vector<xr::EnvironmentBlendMode> blendModes = m_instance.enumerateEnvironmentBlendModesToVector(m_systemId, type);
         CHECK(!blendModes.empty());
 
         Log::Write(Log::Level::Info, Fmt("Available Environment Blend Mode count : (%d)", blendModes.size()));
 
         bool blendModeFound = false;
         for (xr::EnvironmentBlendMode mode : blendModes) {
-            const bool blendModeMatch = (get(mode) == m_environmentBlendMode);
+            const bool blendModeMatch = (mode == m_environmentBlendMode);
             Log::Write(Log::Level::Info,
                        Fmt("Environment Blend Mode (%s) : %s", to_string(mode).c_str(), blendModeMatch ? "(Selected)" : ""));
             blendModeFound |= blendModeMatch;
@@ -294,9 +293,10 @@ struct OpenXrProgram : IOpenXrProgram {
         m_viewConfigType = GetXrViewConfigurationType(m_options->ViewConfiguration);
         m_environmentBlendMode = GetXrEnvironmentBlendMode(m_options->EnvironmentBlendMode);
 
-        m_systemId = m_instance.getSystem(xr::SystemGetInfo{xr::FormFactor(m_formFactor)});
+        m_systemId = m_instance.getSystem(xr::SystemGetInfo{m_formFactor});
 
-        Log::Write(Log::Level::Verbose, Fmt("Using system %d for form factor %s", get(m_systemId), to_string(m_formFactor)));
+        Log::Write(Log::Level::Verbose,
+                   Fmt("Using system %d for form factor %s", get(m_systemId), to_string(m_formFactor).c_str()));
         CHECK(m_instance);
         CHECK(m_systemId);
 
@@ -555,10 +555,10 @@ struct OpenXrProgram : IOpenXrProgram {
         // Note: No other view configurations exist at the time this code was written. If this
         // condition is not met, the project will need to be audited to see how support should be
         // added.
-        CHECK_MSG(m_viewConfigType == XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, "Unsupported view configuration type");
+        CHECK_MSG(m_viewConfigType == xr::ViewConfigurationType::PrimaryStereo, "Unsupported view configuration type");
 
         // Query and cache view configuration views.
-        m_configViews = m_instance.enumerateViewConfigurationViewsToVector(m_systemId, xr::ViewConfigurationType(m_viewConfigType));
+        m_configViews = m_instance.enumerateViewConfigurationViewsToVector(m_systemId, m_viewConfigType);
 
         // Create and cache view buffer for xrLocateViews later.
         m_views.resize(m_configViews.size(), {XR_TYPE_VIEW});
@@ -674,41 +674,42 @@ struct OpenXrProgram : IOpenXrProgram {
         }
     }
 
-    void HandleSessionStateChangedEvent(const XrEventDataSessionStateChanged& stateChangedEvent, bool* exitRenderLoop,
+    void HandleSessionStateChangedEvent(const xr::EventDataSessionStateChanged& stateChangedEvent, bool* exitRenderLoop,
                                         bool* requestRestart) {
-        const XrSessionState oldState = m_sessionState;
+        const xr::SessionState oldState = m_sessionState;
         m_sessionState = stateChangedEvent.state;
 
-        Log::Write(Log::Level::Info, Fmt("XrEventDataSessionStateChanged: state %s->%s session=%lld time=%lld", to_string(oldState),
-                                         to_string(m_sessionState), stateChangedEvent.session, stateChangedEvent.time));
+        Log::Write(Log::Level::Info,
+                   Fmt("XrEventDataSessionStateChanged: state %s->%s session=%lld time=%lld", to_string(oldState).c_str(),
+                       to_string(m_sessionState).c_str(), get(stateChangedEvent.session), get(stateChangedEvent.time)));
 
-        if ((stateChangedEvent.session != XR_NULL_HANDLE) && (stateChangedEvent.session != get(m_session))) {
+        if ((stateChangedEvent.session != nullptr) && (stateChangedEvent.session != m_session)) {
             Log::Write(Log::Level::Error, "XrEventDataSessionStateChanged for unknown session");
             return;
         }
 
         switch (m_sessionState) {
-            case XR_SESSION_STATE_READY: {
-                CHECK(m_session != XR_NULL_HANDLE);
-                XrSessionBeginInfo sessionBeginInfo{XR_TYPE_SESSION_BEGIN_INFO};
+            case xr::SessionState::Ready: {
+                CHECK(m_session);
+                xr::SessionBeginInfo sessionBeginInfo;
                 sessionBeginInfo.primaryViewConfigurationType = m_viewConfigType;
-                CHECK_XRCMD(xrBeginSession(m_session, &sessionBeginInfo));
+                m_session.beginSession(sessionBeginInfo);
                 m_sessionRunning = true;
                 break;
             }
-            case XR_SESSION_STATE_STOPPING: {
-                CHECK(m_session != XR_NULL_HANDLE);
+            case xr::SessionState::Stopping: {
+                CHECK(m_session);
                 m_sessionRunning = false;
-                CHECK_XRCMD(xrEndSession(m_session))
+                m_session.endSession();
                 break;
             }
-            case XR_SESSION_STATE_EXITING: {
+            case xr::SessionState::Exiting: {
                 *exitRenderLoop = true;
                 // Do not attempt to restart because user closed this session.
                 *requestRestart = false;
                 break;
             }
-            case XR_SESSION_STATE_LOSS_PENDING: {
+            case xr::SessionState::LossPending: {
                 *exitRenderLoop = true;
                 // Poll for a new instance.
                 *requestRestart = true;
@@ -748,7 +749,7 @@ struct OpenXrProgram : IOpenXrProgram {
 
     bool IsSessionRunning() const override { return m_sessionRunning; }
 
-    bool IsSessionFocused() const override { return m_sessionState == XR_SESSION_STATE_FOCUSED; }
+    bool IsSessionFocused() const override { return m_sessionState == xr::SessionState::Focused; }
 
     void PollActions() override {
         m_input.handActive = {XR_FALSE, XR_FALSE};
@@ -793,45 +794,41 @@ struct OpenXrProgram : IOpenXrProgram {
     }
 
     void RenderFrame() override {
-        CHECK(m_session != XR_NULL_HANDLE);
+        CHECK(m_session);
 
-        XrFrameWaitInfo frameWaitInfo{XR_TYPE_FRAME_WAIT_INFO};
-        XrFrameState frameState{XR_TYPE_FRAME_STATE};
-        CHECK_XRCMD(xrWaitFrame(m_session, &frameWaitInfo, &frameState));
+        xr::FrameState frameState = m_session.waitFrame({});
 
-        XrFrameBeginInfo frameBeginInfo{XR_TYPE_FRAME_BEGIN_INFO};
-        CHECK_XRCMD(xrBeginFrame(m_session, &frameBeginInfo));
+        m_session.beginFrame({});
 
-        std::vector<XrCompositionLayerBaseHeader*> layers;
-        XrCompositionLayerProjection layer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
-        std::vector<XrCompositionLayerProjectionView> projectionLayerViews;
+        std::vector<const xr::CompositionLayerBaseHeader*> layers;
+        xr::CompositionLayerProjection layer;
+        std::vector<xr::CompositionLayerProjectionView> projectionLayerViews;
         if (frameState.shouldRender == XR_TRUE) {
             if (RenderLayer(frameState.predictedDisplayTime, projectionLayerViews, layer)) {
-                layers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer));
+                layers.push_back(&layer);
             }
         }
 
-        XrFrameEndInfo frameEndInfo{XR_TYPE_FRAME_END_INFO};
+        xr::FrameEndInfo frameEndInfo;
         frameEndInfo.displayTime = frameState.predictedDisplayTime;
         frameEndInfo.environmentBlendMode = m_environmentBlendMode;
         frameEndInfo.layerCount = (uint32_t)layers.size();
         frameEndInfo.layers = layers.data();
-        CHECK_XRCMD(xrEndFrame(m_session, &frameEndInfo));
+        CHECK_XRCMD(xrEndFrame(get(m_session), get(frameEndInfo)));
     }
 
-    bool RenderLayer(XrTime predictedDisplayTime, std::vector<XrCompositionLayerProjectionView>& projectionLayerViews,
-                     XrCompositionLayerProjection& layer) {
+    bool RenderLayer(xr::Time predictedDisplayTime, std::vector<xr::CompositionLayerProjectionView>& projectionLayerViews,
+                     xr::CompositionLayerProjection& layer) {
         xr::ViewState viewState;
         uint32_t viewCapacityInput = (uint32_t)m_views.size();
         uint32_t viewCountOutput;
 
-        XrViewLocateInfo viewLocateInfo{XR_TYPE_VIEW_LOCATE_INFO};
+        xr::ViewLocateInfo viewLocateInfo;
         viewLocateInfo.viewConfigurationType = m_viewConfigType;
         viewLocateInfo.displayTime = predictedDisplayTime;
         viewLocateInfo.space = m_appSpace;
-        xr::Result res =
-            m_session.locateViews({xr::ViewConfigurationType(m_viewConfigType), xr::Time(predictedDisplayTime), m_appSpace},
-                                  put(viewState), viewCapacityInput, &viewCountOutput, m_views.data());
+        xr::Result res = m_session.locateViews({m_viewConfigType, predictedDisplayTime, m_appSpace}, put(viewState),
+                                               viewCapacityInput, &viewCountOutput, m_views.data());
         CHECK_XRRESULT(get(res), "xrLocateViews");
 
         if ((viewState.viewStateFlags & xr::ViewStateFlagBits::PositionValid) == 0 ||
@@ -842,8 +839,6 @@ struct OpenXrProgram : IOpenXrProgram {
         CHECK(viewCountOutput == viewCapacityInput);
         CHECK(viewCountOutput == m_configViews.size());
         CHECK(viewCountOutput == m_swapchains.size());
-
-        projectionLayerViews.resize(viewCountOutput);
 
         // For each locatable space that we want to visualize, render a 25cm cube.
         std::vector<Cube> cubes;
@@ -866,7 +861,7 @@ struct OpenXrProgram : IOpenXrProgram {
         // true when the application has focus.
         for (auto hand : {Side::LEFT, Side::RIGHT}) {
             xr::SpaceLocation spaceLocation;
-            res = m_input.handSpace[hand].locateSpace(m_appSpace, xr::Time(predictedDisplayTime), spaceLocation);
+            res = m_input.handSpace[hand].locateSpace(m_appSpace, predictedDisplayTime, spaceLocation);
             CHECK_XRRESULT(get(res), "xrLocateSpace");
             if (unqualifiedSuccess(res)) {
                 if ((spaceLocation.locationFlags & xr::SpaceLocationFlagBits::PositionValid) &&
@@ -885,6 +880,7 @@ struct OpenXrProgram : IOpenXrProgram {
             }
         }
 
+        projectionLayerViews.resize(viewCountOutput);
         // Render view to the appropriate part of the swapchain image.
         for (uint32_t i = 0; i < viewCountOutput; i++) {
             // Each view has a separate swapchain which is acquired, rendered to, and released.
@@ -895,18 +891,16 @@ struct OpenXrProgram : IOpenXrProgram {
 
             CHECK_XRCMD(get(swapchainHandle.waitSwapchainImage({xr::Duration::infinite()})));
 
-            projectionLayerViews[i] = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
             projectionLayerViews[i].pose = m_views[i].pose;
             projectionLayerViews[i].fov = m_views[i].fov;
             projectionLayerViews[i].subImage.swapchain = viewSwapchain.handle;
-            projectionLayerViews[i].subImage.imageRect.offset = {0, 0};
-            projectionLayerViews[i].subImage.imageRect.extent = {viewSwapchain.width, viewSwapchain.height};
+            projectionLayerViews[i].subImage.imageRect.offset = xr::Offset2Di{0, 0};
+            projectionLayerViews[i].subImage.imageRect.extent = xr::Extent2Di{viewSwapchain.width, viewSwapchain.height};
 
             const XrSwapchainImageBaseHeader* const swapchainImage = m_swapchainImages[viewSwapchain.handle][swapchainImageIndex];
             m_graphicsPlugin->RenderView(projectionLayerViews[i], swapchainImage, m_colorSwapchainFormat, cubes);
 
-            XrSwapchainImageReleaseInfo releaseInfo{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-            CHECK_XRCMD(xrReleaseSwapchainImage(viewSwapchain.handle, &releaseInfo));
+            swapchainHandle.releaseSwapchainImage({});
         }
 
         layer.space = m_appSpace;
@@ -922,9 +916,9 @@ struct OpenXrProgram : IOpenXrProgram {
     xr::Instance m_instance;
     xr::Session m_session;
     xr::Space m_appSpace;
-    XrFormFactor m_formFactor{XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY};
-    XrViewConfigurationType m_viewConfigType{XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO};
-    XrEnvironmentBlendMode m_environmentBlendMode{XR_ENVIRONMENT_BLEND_MODE_OPAQUE};
+    xr::FormFactor m_formFactor{xr::FormFactor::HeadMountedDisplay};
+    xr::ViewConfigurationType m_viewConfigType{xr::ViewConfigurationType::PrimaryStereo};
+    xr::EnvironmentBlendMode m_environmentBlendMode{xr::EnvironmentBlendMode::Opaque};
     xr::SystemId m_systemId;
 
     std::vector<xr::ViewConfigurationView> m_configViews;
@@ -936,7 +930,7 @@ struct OpenXrProgram : IOpenXrProgram {
     std::vector<xr::Space> m_visualizedSpaces;
 
     // Application's current lifecycle state according to the runtime
-    XrSessionState m_sessionState{XR_SESSION_STATE_UNKNOWN};
+    xr::SessionState m_sessionState;
     bool m_sessionRunning{false};
 
     xr::EventDataBuffer m_eventDataBuffer;

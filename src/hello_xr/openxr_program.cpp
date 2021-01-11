@@ -603,17 +603,17 @@ struct OpenXrProgram : IOpenXrProgram {
     }
 
     // Return event if one is available, otherwise return null.
-    const XrEventDataBaseHeader* TryReadNextEvent() {
+    const xr::EventDataBaseHeader* TryReadNextEvent() {
         m_eventDataBuffer = {};
         xr::Result res = m_instance.pollEvent(m_eventDataBuffer);
         if (unqualifiedSuccess(res)) {
-            XrEventDataBaseHeader* baseHeader = reinterpret_cast<XrEventDataBaseHeader*>(&m_eventDataBuffer);
+            xr::EventDataBaseHeader* baseHeader = reinterpret_cast<xr::EventDataBaseHeader*>(&m_eventDataBuffer);
             if (m_eventDataBuffer.type == xr::StructureType::EventDataEventsLost) {
                 const xr::EventDataEventsLost* const eventsLost = reinterpret_cast<const xr::EventDataEventsLost*>(baseHeader);
                 Log::Write(Log::Level::Warning, Fmt("%d events lost", eventsLost->lostEventCount));
             }
 
-            return reinterpret_cast<const XrEventDataBaseHeader*>(baseHeader);
+            return baseHeader;
         }
         if (res == xr::Result::EventUnavailable) {
             return nullptr;
@@ -625,29 +625,30 @@ struct OpenXrProgram : IOpenXrProgram {
         *exitRenderLoop = *requestRestart = false;
 
         // Process all pending messages.
-        while (const XrEventDataBaseHeader* event = TryReadNextEvent()) {
+        while (const xr::EventDataBaseHeader* event = TryReadNextEvent()) {
             switch (event->type) {
-                case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING: {
-                    const auto& instanceLossPending = *reinterpret_cast<const XrEventDataInstanceLossPending*>(event);
-                    Log::Write(Log::Level::Warning, Fmt("XrEventDataInstanceLossPending by %lld", instanceLossPending.lossTime));
+                case xr::StructureType::EventDataInstanceLossPending: {
+                    const auto& instanceLossPending = *reinterpret_cast<const xr::EventDataInstanceLossPending*>(event);
+                    Log::Write(Log::Level::Warning,
+                               Fmt("XrEventDataInstanceLossPending by %lld", get(instanceLossPending.lossTime)));
                     *exitRenderLoop = true;
                     *requestRestart = true;
                     return;
                 }
-                case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED: {
-                    auto sessionStateChangedEvent = *reinterpret_cast<const XrEventDataSessionStateChanged*>(event);
+                case xr::StructureType::EventDataSessionStateChanged: {
+                    auto sessionStateChangedEvent = *reinterpret_cast<const xr::EventDataSessionStateChanged*>(event);
                     HandleSessionStateChangedEvent(sessionStateChangedEvent, exitRenderLoop, requestRestart);
                     break;
                 }
-                case XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED:
+                case xr::StructureType::EventDataInteractionProfileChanged:
                     LogActionSourceName(m_input.grabAction, "Grab");
                     LogActionSourceName(m_input.quitAction, "Quit");
                     LogActionSourceName(m_input.poseAction, "Pose");
                     LogActionSourceName(m_input.vibrateAction, "Vibrate");
                     break;
-                case XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING:
+                case xr::StructureType::EventDataReferenceSpaceChangePending:
                 default: {
-                    Log::Write(Log::Level::Verbose, Fmt("Ignoring event type %d", event->type));
+                    Log::Write(Log::Level::Verbose, Fmt("Ignoring event type %d", int(event->type)));
                     break;
                 }
             }

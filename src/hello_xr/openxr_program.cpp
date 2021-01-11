@@ -728,7 +728,7 @@ struct OpenXrProgram : IOpenXrProgram {
     bool IsSessionFocused() const override { return m_sessionState == xr::SessionState::Focused; }
 
     void PollActions() override {
-        m_input.handActive = {XR_FALSE, XR_FALSE};
+        m_input.handActive = {false, false};
 
         // Sync actions
         const xr::ActiveActionSet activeActionSet{m_input.actionSet, xr::Path::null()};
@@ -790,7 +790,7 @@ struct OpenXrProgram : IOpenXrProgram {
         frameEndInfo.environmentBlendMode = m_environmentBlendMode;
         frameEndInfo.layerCount = (uint32_t)layers.size();
         frameEndInfo.layers = layers.data();
-        CHECK_XRCMD(xrEndFrame(get(m_session), get(frameEndInfo)));
+        m_session.endFrame(frameEndInfo);
     }
 
     bool RenderLayer(xr::Time predictedDisplayTime, std::vector<xr::CompositionLayerProjectionView>& projectionLayerViews,

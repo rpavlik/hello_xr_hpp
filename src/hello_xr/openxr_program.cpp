@@ -239,7 +239,7 @@ struct OpenXrProgram : IOpenXrProgram {
                 m_instance.getViewConfigurationProperties(m_systemId, viewConfigType);
 
             Log::Write(Log::Level::Verbose,
-                       Fmt("  View configuration FovMutable=%s", viewConfigProperties.fovMutable == XR_TRUE ? "True" : "False"));
+                       Fmt("  View configuration FovMutable=%s", viewConfigProperties.fovMutable ? "True" : "False"));
 
             std::vector<xr::ViewConfigurationView> views =
                 m_instance.enumerateViewConfigurationViewsToVector(m_systemId, viewConfigType);
@@ -321,7 +321,7 @@ struct OpenXrProgram : IOpenXrProgram {
         std::array<xr::Path, Side::COUNT> handSubactionPath;
         std::array<xr::Space, Side::COUNT> handSpace;
         std::array<float, Side::COUNT> handScale = {{1.0f, 1.0f}};
-        std::array<XrBool32, Side::COUNT> handActive;
+        std::array<xr::Bool32, Side::COUNT> handActive;
     };
 
     void InitializeActions() {
@@ -523,8 +523,8 @@ struct OpenXrProgram : IOpenXrProgram {
                                          systemProperties.graphicsProperties.maxSwapchainImageHeight,
                                          systemProperties.graphicsProperties.maxLayerCount));
         Log::Write(Log::Level::Info, Fmt("System Tracking Properties: OrientationTracking=%s PositionTracking=%s",
-                                         systemProperties.trackingProperties.orientationTracking == XR_TRUE ? "True" : "False",
-                                         systemProperties.trackingProperties.positionTracking == XR_TRUE ? "True" : "False"));
+                                         systemProperties.trackingProperties.orientationTracking ? "True" : "False",
+                                         systemProperties.trackingProperties.positionTracking ? "True" : "False"));
 
         // Note: No other view configurations exist at the time this code was written. If this
         // condition is not met, the project will need to be audited to see how support should be
@@ -722,7 +722,7 @@ struct OpenXrProgram : IOpenXrProgram {
     bool IsSessionFocused() const override { return m_sessionState == xr::SessionState::Focused; }
 
     void PollActions() override {
-        m_input.handActive = {XR_FALSE, XR_FALSE};
+        m_input.handActive = {false, false};
 
         // Sync actions
         const xr::ActiveActionSet activeActionSet{m_input.actionSet, xr::Path::null()};
@@ -735,7 +735,7 @@ struct OpenXrProgram : IOpenXrProgram {
             getInfo.subactionPath = m_input.handSubactionPath[hand];
 
             xr::ActionStateFloat grabValue = m_session.getActionStateFloat(getInfo);
-            if (grabValue.isActive == XR_TRUE) {
+            if (grabValue.isActive) {
                 // Scale the rendered hand by 1.0f (open) to 0.5f (fully squeezed).
                 m_input.handScale[hand] = 1.0f - 0.5f * grabValue.currentState;
                 if (grabValue.currentState > 0.9f) {
@@ -753,12 +753,12 @@ struct OpenXrProgram : IOpenXrProgram {
 
             getInfo.action = m_input.poseAction;
             xr::ActionStatePose poseState = m_session.getActionStatePose(getInfo);
-            m_input.handActive[hand] = get(poseState.isActive);
+            m_input.handActive[hand] = poseState.isActive;
         }
 
         // There were no subaction paths specified for the quit action, because we don't care which hand did it.
         xr::ActionStateBoolean quitValue = m_session.getActionStateBoolean({m_input.quitAction, xr::Path::null()});
-        if ((quitValue.isActive == XR_TRUE) && (quitValue.changedSinceLastSync == XR_TRUE) && (quitValue.currentState == XR_TRUE)) {
+        if (quitValue.isActive && quitValue.changedSinceLastSync && quitValue.currentState) {
             m_session.requestExitSession();
         }
     }
@@ -773,7 +773,7 @@ struct OpenXrProgram : IOpenXrProgram {
         std::vector<const xr::CompositionLayerBaseHeader*> layers;
         xr::CompositionLayerProjection layer;
         std::vector<xr::CompositionLayerProjectionView> projectionLayerViews;
-        if (frameState.shouldRender == XR_TRUE) {
+        if (frameState.shouldRender) {
             if (RenderLayer(frameState.predictedDisplayTime, projectionLayerViews, layer)) {
                 layers.push_back(&layer);
             }
@@ -837,7 +837,7 @@ struct OpenXrProgram : IOpenXrProgram {
             } else {
                 // Tracking loss is expected when the hand is not active so only log a message
                 // if the hand is active.
-                if (m_input.handActive[hand] == XR_TRUE) {
+                if (m_input.handActive[hand]) {
                     const char* handName[] = {"left", "right"};
                     Log::Write(Log::Level::Verbose,
                                Fmt("Unable to locate %s hand action space in app space: %d", handName[hand], get(res)));

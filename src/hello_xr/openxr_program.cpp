@@ -28,10 +28,6 @@ const int RIGHT = 1;
 const int COUNT = 2;
 }  // namespace Side
 
-inline std::string GetXrVersionString(XrVersion ver) {
-    return Fmt("%d.%d.%d", XR_VERSION_MAJOR(ver), XR_VERSION_MINOR(ver), XR_VERSION_PATCH(ver));
-}
-
 inline xr::FormFactor GetXrFormFactor(const std::string& formFactorStr) {
     if (EqualsIgnoreCase(formFactorStr, "Hmd")) {
         return xr::FormFactor::HeadMountedDisplay;
@@ -175,10 +171,9 @@ struct OpenXrProgram : IOpenXrProgram {
         {
             std::vector<xr::ApiLayerProperties> layers = xr::enumerateApiLayerPropertiesToVector();
             Log::Write(Log::Level::Info, Fmt("Available Layers: (%d)", layers.size()));
-            for (const XrApiLayerProperties& layer : layers) {
-                Log::Write(Log::Level::Verbose,
-                           Fmt("  Name=%s SpecVersion=%s LayerVersion=%d Description=%s", layer.layerName,
-                               GetXrVersionString(layer.specVersion).c_str(), layer.layerVersion, layer.description));
+            for (const xr::ApiLayerProperties& layer : layers) {
+                Log::Write(Log::Level::Verbose, Fmt("  Name=%s SpecVersion=%s LayerVersion=%d Description=%s", layer.layerName,
+                                                    to_string(layer.specVersion).c_str(), layer.layerVersion, layer.description));
                 logExtensions(layer.layerName, 4);
             }
         }

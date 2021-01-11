@@ -22,12 +22,8 @@
     }
 // clang-format on
 
-MAKE_TO_STRING_FUNC(XrReferenceSpaceType);
-MAKE_TO_STRING_FUNC(XrViewConfigurationType);
-MAKE_TO_STRING_FUNC(XrEnvironmentBlendMode);
-MAKE_TO_STRING_FUNC(XrSessionState);
 MAKE_TO_STRING_FUNC(XrResult);
-MAKE_TO_STRING_FUNC(XrFormFactor);
+
 
 inline bool EqualsIgnoreCase(const std::string& s1, const std::string& s2, const std::locale& loc = std::locale()) {
     const std::ctype<char>& ctype = std::use_facet<std::ctype<char>>(loc);

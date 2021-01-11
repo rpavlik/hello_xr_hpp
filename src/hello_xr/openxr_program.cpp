@@ -395,99 +395,78 @@ struct OpenXrProgram : IOpenXrProgram {
         // Suggest bindings for KHR Simple.
         {
             auto khrSimpleInteractionProfilePath = m_instance.stringToPath("/interaction_profiles/khr/simple_controller");
-            std::vector<xr::ActionSuggestedBinding> bindings{
-                {// Fall back to a click input for the grab action.
-                 xr::ActionSuggestedBinding{m_input.grabAction, selectPath[Side::LEFT]},
-                 xr::ActionSuggestedBinding{m_input.grabAction, selectPath[Side::RIGHT]},
-                 xr::ActionSuggestedBinding{m_input.poseAction, posePath[Side::LEFT]},
-                 xr::ActionSuggestedBinding{m_input.poseAction, posePath[Side::RIGHT]},
-                 xr::ActionSuggestedBinding{m_input.quitAction, menuClickPath[Side::LEFT]},
-                 xr::ActionSuggestedBinding{m_input.quitAction, menuClickPath[Side::RIGHT]},
-                 xr::ActionSuggestedBinding{m_input.vibrateAction, hapticPath[Side::LEFT]},
-                 xr::ActionSuggestedBinding{m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
+            std::vector<xr::ActionSuggestedBinding> bindings{{// Fall back to a click input for the grab action.
+                                                              {m_input.grabAction, selectPath[Side::LEFT]},
+                                                              {m_input.grabAction, selectPath[Side::RIGHT]},
+                                                              {m_input.poseAction, posePath[Side::LEFT]},
+                                                              {m_input.poseAction, posePath[Side::RIGHT]},
+                                                              {m_input.quitAction, menuClickPath[Side::LEFT]},
+                                                              {m_input.quitAction, menuClickPath[Side::RIGHT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::LEFT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
 
             m_instance.suggestInteractionProfileBindings(
                 {khrSimpleInteractionProfilePath, uint32_t(bindings.size()), bindings.data()});
         }
-#if 0
         // Suggest bindings for the Oculus Touch.
         {
-            XrPath oculusTouchInteractionProfilePath;
-            CHECK_XRCMD(
-                xrStringToPath(m_instance, "/interaction_profiles/oculus/touch_controller", &oculusTouchInteractionProfilePath));
-            std::vector<XrActionSuggestedBinding> bindings{{{m_input.grabAction, squeezeValuePath[Side::LEFT]},
-                                                            {m_input.grabAction, squeezeValuePath[Side::RIGHT]},
-                                                            {m_input.poseAction, posePath[Side::LEFT]},
-                                                            {m_input.poseAction, posePath[Side::RIGHT]},
-                                                            {m_input.quitAction, menuClickPath[Side::LEFT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::LEFT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
-            XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-            suggestedBindings.interactionProfile = oculusTouchInteractionProfilePath;
-            suggestedBindings.suggestedBindings = bindings.data();
-            suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
-            CHECK_XRCMD(xrSuggestInteractionProfileBindings(m_instance, &suggestedBindings));
+            xr::Path oculusTouchInteractionProfilePath = m_instance.stringToPath("/interaction_profiles/oculus/touch_controller");
+            std::vector<xr::ActionSuggestedBinding> bindings{{{m_input.grabAction, squeezeValuePath[Side::LEFT]},
+                                                              {m_input.grabAction, squeezeValuePath[Side::RIGHT]},
+                                                              {m_input.poseAction, posePath[Side::LEFT]},
+                                                              {m_input.poseAction, posePath[Side::RIGHT]},
+                                                              {m_input.quitAction, menuClickPath[Side::LEFT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::LEFT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
+            m_instance.suggestInteractionProfileBindings(
+                {oculusTouchInteractionProfilePath, uint32_t(bindings.size()), bindings.data()});
         }
         // Suggest bindings for the Vive Controller.
         {
-            XrPath viveControllerInteractionProfilePath;
-            CHECK_XRCMD(
-                xrStringToPath(m_instance, "/interaction_profiles/htc/vive_controller", &viveControllerInteractionProfilePath));
-            std::vector<XrActionSuggestedBinding> bindings{{{m_input.grabAction, triggerValuePath[Side::LEFT]},
-                                                            {m_input.grabAction, triggerValuePath[Side::RIGHT]},
-                                                            {m_input.poseAction, posePath[Side::LEFT]},
-                                                            {m_input.poseAction, posePath[Side::RIGHT]},
-                                                            {m_input.quitAction, menuClickPath[Side::LEFT]},
-                                                            {m_input.quitAction, menuClickPath[Side::RIGHT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::LEFT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
-            XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-            suggestedBindings.interactionProfile = viveControllerInteractionProfilePath;
-            suggestedBindings.suggestedBindings = bindings.data();
-            suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
-            CHECK_XRCMD(xrSuggestInteractionProfileBindings(m_instance, &suggestedBindings));
+            xr::Path viveControllerInteractionProfilePath = m_instance.stringToPath("/interaction_profiles/htc/vive_controller");
+            std::vector<xr::ActionSuggestedBinding> bindings{{{m_input.grabAction, triggerValuePath[Side::LEFT]},
+                                                              {m_input.grabAction, triggerValuePath[Side::RIGHT]},
+                                                              {m_input.poseAction, posePath[Side::LEFT]},
+                                                              {m_input.poseAction, posePath[Side::RIGHT]},
+                                                              {m_input.quitAction, menuClickPath[Side::LEFT]},
+                                                              {m_input.quitAction, menuClickPath[Side::RIGHT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::LEFT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
+            m_instance.suggestInteractionProfileBindings(
+                {viveControllerInteractionProfilePath, uint32_t(bindings.size()), bindings.data()});
         }
 
         // Suggest bindings for the Valve Index Controller.
         {
-            XrPath indexControllerInteractionProfilePath;
-            CHECK_XRCMD(
-                xrStringToPath(m_instance, "/interaction_profiles/valve/index_controller", &indexControllerInteractionProfilePath));
-            std::vector<XrActionSuggestedBinding> bindings{{{m_input.grabAction, squeezeForcePath[Side::LEFT]},
-                                                            {m_input.grabAction, squeezeForcePath[Side::RIGHT]},
-                                                            {m_input.poseAction, posePath[Side::LEFT]},
-                                                            {m_input.poseAction, posePath[Side::RIGHT]},
-                                                            {m_input.quitAction, bClickPath[Side::LEFT]},
-                                                            {m_input.quitAction, bClickPath[Side::RIGHT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::LEFT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
-            XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-            suggestedBindings.interactionProfile = indexControllerInteractionProfilePath;
-            suggestedBindings.suggestedBindings = bindings.data();
-            suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
-            CHECK_XRCMD(xrSuggestInteractionProfileBindings(m_instance, &suggestedBindings));
+            xr::Path indexControllerInteractionProfilePath =
+                m_instance.stringToPath("/interaction_profiles/valve/index_controller");
+            std::vector<xr::ActionSuggestedBinding> bindings{{{m_input.grabAction, squeezeForcePath[Side::LEFT]},
+                                                              {m_input.grabAction, squeezeForcePath[Side::RIGHT]},
+                                                              {m_input.poseAction, posePath[Side::LEFT]},
+                                                              {m_input.poseAction, posePath[Side::RIGHT]},
+                                                              {m_input.quitAction, bClickPath[Side::LEFT]},
+                                                              {m_input.quitAction, bClickPath[Side::RIGHT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::LEFT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
+            m_instance.suggestInteractionProfileBindings(
+                {indexControllerInteractionProfilePath, uint32_t(bindings.size()), bindings.data()});
         }
 
         // Suggest bindings for the Microsoft Mixed Reality Motion Controller.
         {
-            XrPath microsoftMixedRealityInteractionProfilePath;
-            CHECK_XRCMD(xrStringToPath(m_instance, "/interaction_profiles/microsoft/motion_controller",
-                                       &microsoftMixedRealityInteractionProfilePath));
-            std::vector<XrActionSuggestedBinding> bindings{{{m_input.grabAction, squeezeClickPath[Side::LEFT]},
-                                                            {m_input.grabAction, squeezeClickPath[Side::RIGHT]},
-                                                            {m_input.poseAction, posePath[Side::LEFT]},
-                                                            {m_input.poseAction, posePath[Side::RIGHT]},
-                                                            {m_input.quitAction, menuClickPath[Side::LEFT]},
-                                                            {m_input.quitAction, menuClickPath[Side::RIGHT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::LEFT]},
-                                                            {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
-            XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-            suggestedBindings.interactionProfile = microsoftMixedRealityInteractionProfilePath;
-            suggestedBindings.suggestedBindings = bindings.data();
-            suggestedBindings.countSuggestedBindings = (uint32_t)bindings.size();
-            CHECK_XRCMD(xrSuggestInteractionProfileBindings(m_instance, &suggestedBindings));
+            xr::Path microsoftMixedRealityInteractionProfilePath =
+                m_instance.stringToPath("/interaction_profiles/microsoft/motion_controller");
+            std::vector<xr::ActionSuggestedBinding> bindings{{{m_input.grabAction, squeezeClickPath[Side::LEFT]},
+                                                              {m_input.grabAction, squeezeClickPath[Side::RIGHT]},
+                                                              {m_input.poseAction, posePath[Side::LEFT]},
+                                                              {m_input.poseAction, posePath[Side::RIGHT]},
+                                                              {m_input.quitAction, menuClickPath[Side::LEFT]},
+                                                              {m_input.quitAction, menuClickPath[Side::RIGHT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::LEFT]},
+                                                              {m_input.vibrateAction, hapticPath[Side::RIGHT]}}};
+            m_instance.suggestInteractionProfileBindings(
+                {microsoftMixedRealityInteractionProfilePath, uint32_t(bindings.size()), bindings.data()});
         }
-#endif
         m_input.handSpace[Side::LEFT] =
             m_session.createActionSpace(xr::ActionSpaceCreateInfo{m_input.poseAction, m_input.handSubactionPath[Side::LEFT], {}});
         m_input.handSpace[Side::RIGHT] =

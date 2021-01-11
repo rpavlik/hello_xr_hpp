@@ -29,10 +29,6 @@ const int RIGHT = 1;
 const int COUNT = 2;
 }  // namespace Side
 
-inline std::string GetXrVersionString(XrVersion ver) {
-    return Fmt("%d.%d.%d", XR_VERSION_MAJOR(ver), XR_VERSION_MINOR(ver), XR_VERSION_PATCH(ver));
-}
-
 inline xr::FormFactor GetXrFormFactor(const std::string& formFactorStr) {
     if (EqualsIgnoreCase(formFactorStr, "Hmd")) {
         return xr::FormFactor::HeadMountedDisplay;
@@ -178,24 +174,23 @@ struct OpenXrProgram : IOpenXrProgram {
         {
             std::vector<xr::ApiLayerProperties> layers = xr::enumerateApiLayerPropertiesToVector();
             Log::Write(Log::Level::Info, Fmt("Available Layers: (%d)", layers.size()));
-            for (const XrApiLayerProperties& layer : layers) {
-                Log::Write(Log::Level::Verbose,
-                           Fmt("  Name=%s SpecVersion=%s LayerVersion=%d Description=%s", layer.layerName,
-                               GetXrVersionString(layer.specVersion).c_str(), layer.layerVersion, layer.description));
+            for (const xr::ApiLayerProperties& layer : layers) {
+                Log::Write(Log::Level::Verbose, Fmt("  Name=%s SpecVersion=%s LayerVersion=%d Description=%s", layer.layerName,
+                                                    to_string(layer.specVersion).c_str(), layer.layerVersion, layer.description));
                 logExtensions(layer.layerName, 4);
             }
         }
     }
 
     void LogInstanceInfo() {
-        CHECK(m_instance != XR_NULL_HANDLE);
+        CHECK(m_instance);
         xr::InstanceProperties instanceProperties = m_instance.getInstanceProperties();
         Log::Write(Log::Level::Info, Fmt("Instance RuntimeName=%s RuntimeVersion=%s", instanceProperties.runtimeName,
                                          to_string(instanceProperties.runtimeVersion).c_str()));
     }
 
     void CreateInstanceInternal() {
-        CHECK(m_instance == XR_NULL_HANDLE);
+        CHECK(!m_instance);
 
         // Create union of extensions required by platform and graphics plugins.
         std::vector<const char*> extensions;
@@ -336,13 +331,13 @@ struct OpenXrProgram : IOpenXrProgram {
     };
 
     void InitializeActions() {
-        CHECK(m_instance != XR_NULL_HANDLE);
+        CHECK(m_instance);
 
         // Create an action set.
         xr::ActionSet actionSet = m_instance.createActionSet({"gameplay", "Gameplay", 0});
         m_input.actionSet = actionSet;
 
-        // Get the XrPath for the left and right hands - we will use them as subaction paths.
+        // Get the xr::Path for the left and right hands - we will use them as subaction paths.
         m_input.handSubactionPath[Side::LEFT] = m_instance.stringToPath("/user/hand/left");
         m_input.handSubactionPath[Side::RIGHT] = m_instance.stringToPath("/user/hand/right");
 
@@ -705,18 +700,13 @@ struct OpenXrProgram : IOpenXrProgram {
         }
     }
 
-    void LogActionSourceName(XrAction action, const std::string& actionName) const {
-        XrBoundSourcesForActionEnumerateInfo getInfo = {XR_TYPE_BOUND_SOURCES_FOR_ACTION_ENUMERATE_INFO};
-        getInfo.action = action;
-        uint32_t pathCount = 0;
-        CHECK_XRCMD(xrEnumerateBoundSourcesForAction(m_session, &getInfo, 0, &pathCount, nullptr));
-        std::vector<XrPath> paths(pathCount);
-        CHECK_XRCMD(xrEnumerateBoundSourcesForAction(m_session, &getInfo, uint32_t(paths.size()), &pathCount, paths.data()));
-
+    void LogActionSourceName(xr::Action action, const std::string& actionName) const {
+        std::vector<xr::Path> paths = m_session.enumerateBoundSourcesForActionToVector({action});
+        const size_t pathCount = paths.size();
         std::string sourceName;
-        for (uint32_t i = 0; i < pathCount; ++i) {
-            std::string grabSource = xr::Session(m_session).getInputSourceLocalizedName(
-                {xr::Path(paths[i]), xr::InputSourceLocalizedNameFlagBits::AllBits});
+        for (size_t i = 0; i < pathCount; ++i) {
+            std::string grabSource =
+                m_session.getInputSourceLocalizedName({paths[i], xr::InputSourceLocalizedNameFlagBits::AllBits});
             if (grabSource.empty()) {
                 continue;
             }

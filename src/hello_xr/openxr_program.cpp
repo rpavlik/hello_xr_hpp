@@ -541,7 +541,7 @@ struct OpenXrProgram : IOpenXrProgram {
         m_configViews = m_instance.enumerateViewConfigurationViewsToVector(m_systemId, xr::ViewConfigurationType(m_viewConfigType));
 
         // Create and cache view buffer for xrLocateViews later.
-        m_views.resize(m_configViews.size(), {XR_TYPE_VIEW});
+        m_views.resize(m_configViews.size());
 
         // Create the swapchain and get the images.
         if (!m_configViews.empty()) {
@@ -796,32 +796,27 @@ struct OpenXrProgram : IOpenXrProgram {
     bool RenderLayer(xr::Time predictedDisplayTime, std::vector<xr::CompositionLayerProjectionView>& projectionLayerViews,
                      xr::CompositionLayerProjection& layer) {
         xr::ViewState viewState;
-        uint32_t viewCapacityInput = (uint32_t)m_views.size();
-        uint32_t viewCountOutput;
 
         xr::ViewLocateInfo viewLocateInfo;
         viewLocateInfo.viewConfigurationType = m_viewConfigType;
         viewLocateInfo.displayTime = predictedDisplayTime;
         viewLocateInfo.space = m_appSpace;
-        xr::Result res = m_session.locateViews({m_viewConfigType, predictedDisplayTime, m_appSpace}, put(viewState),
-                                               viewCapacityInput, &viewCountOutput, m_views.data());
-        CHECK_XRRESULT(get(res), "xrLocateViews");
+        m_views = m_session.locateViewsToVector({m_viewConfigType, predictedDisplayTime, m_appSpace}, put(viewState));
 
         if ((viewState.viewStateFlags & xr::ViewStateFlagBits::PositionValid) == 0 ||
             (viewState.viewStateFlags & xr::ViewStateFlagBits::OrientationValid) == 0) {
             return false;  // There is no valid tracking poses for the views.
         }
-
-        CHECK(viewCountOutput == viewCapacityInput);
-        CHECK(viewCountOutput == m_configViews.size());
-        CHECK(viewCountOutput == m_swapchains.size());
+        const uint32_t viewCountOutput = static_cast<uint32_t>(m_views.size());
+        CHECK(m_views.size() == m_configViews.size());
+        CHECK(m_views.size() == m_swapchains.size());
 
         // For each locatable space that we want to visualize, render a 25cm cube.
         std::vector<Cube> cubes;
 
         for (xr::Space visualizedSpace : m_visualizedSpaces) {
             xr::SpaceLocation spaceLocation;
-            res = visualizedSpace.locateSpace(m_appSpace, xr::Time(predictedDisplayTime), spaceLocation);
+            xr::Result res = visualizedSpace.locateSpace(m_appSpace, predictedDisplayTime, spaceLocation);
             CHECK_XRRESULT(get(res), "xrLocateSpace");
             if (unqualifiedSuccess(res)) {
                 if ((spaceLocation.locationFlags & xr::SpaceLocationFlagBits::PositionValid) != 0 &&
@@ -838,7 +833,8 @@ struct OpenXrProgram : IOpenXrProgram {
         for (auto hand : {Side::LEFT, Side::RIGHT}) {
             // need dispatch for disambiguation
             xr::SpaceLocation spaceLocation;
-            res = m_input.handSpace[hand].locateSpace(m_appSpace, xr::Time(predictedDisplayTime), spaceLocation, dispatch);
+            xr::Result res =
+                m_input.handSpace[hand].locateSpace(m_appSpace, xr::Time(predictedDisplayTime), spaceLocation, dispatch);
             CHECK_XRRESULT(get(res), "xrLocateSpace");
             if (unqualifiedSuccess(res)) {
                 if ((spaceLocation.locationFlags & xr::SpaceLocationFlagBits::PositionValid) &&
@@ -852,7 +848,7 @@ struct OpenXrProgram : IOpenXrProgram {
                 if (m_input.handActive[hand] == XR_TRUE) {
                     const char* handName[] = {"left", "right"};
                     Log::Write(Log::Level::Verbose,
-                               Fmt("Unable to locate %s hand action space in app space: %d", handName[hand], res));
+                               Fmt("Unable to locate %s hand action space in app space: %d", handName[hand], get(res)));
                 }
             }
         }
@@ -901,7 +897,7 @@ struct OpenXrProgram : IOpenXrProgram {
     std::vector<xr::ViewConfigurationView> m_configViews;
     std::vector<Swapchain> m_swapchains;
     std::map<XrSwapchain, std::vector<XrSwapchainImageBaseHeader*>> m_swapchainImages;
-    std::vector<XrView> m_views;
+    std::vector<xr::View> m_views;
     int64_t m_colorSwapchainFormat{-1};
 
     std::vector<xr::Space> m_visualizedSpaces;

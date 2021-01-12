@@ -784,7 +784,7 @@ struct OpenXrProgram : IOpenXrProgram {
         frameEndInfo.environmentBlendMode = m_environmentBlendMode;
         frameEndInfo.layerCount = (uint32_t)layers.size();
         frameEndInfo.layers = layers.data();
-        CHECK_XRCMD(xrEndFrame(get(m_session), get(frameEndInfo)));
+        m_session.endFrame(frameEndInfo);
     }
 
     bool RenderLayer(xr::Time predictedDisplayTime, std::vector<xr::CompositionLayerProjectionView>& projectionLayerViews,

@@ -262,16 +262,15 @@ struct OpenXrProgram : IOpenXrProgram {
                 Log::Write(Log::Level::Error, Fmt("Empty view configuration type"));
             }
 
-            LogEnvironmentBlendMode(get(viewConfigType));
+            LogEnvironmentBlendMode(viewConfigType);
         }
     }
 
-    void LogEnvironmentBlendMode(XrViewConfigurationType type) {
+    void LogEnvironmentBlendMode(xr::ViewConfigurationType type) {
         CHECK(m_instance);
         CHECK(m_systemId);
 
-        std::vector<xr::EnvironmentBlendMode> blendModes =
-            m_instance.enumerateEnvironmentBlendModesToVector(m_systemId, xr::ViewConfigurationType(type));
+        std::vector<xr::EnvironmentBlendMode> blendModes = m_instance.enumerateEnvironmentBlendModesToVector(m_systemId, type);
         CHECK(!blendModes.empty());
 
         Log::Write(Log::Level::Info, Fmt("Available Environment Blend Mode count : (%d)", blendModes.size()));
@@ -294,7 +293,7 @@ struct OpenXrProgram : IOpenXrProgram {
         m_viewConfigType = GetXrViewConfigurationType(m_options->ViewConfiguration);
         m_environmentBlendMode = GetXrEnvironmentBlendMode(m_options->EnvironmentBlendMode);
 
-        m_systemId = m_instance.getSystem(xr::SystemGetInfo{xr::FormFactor(m_formFactor)});
+        m_systemId = m_instance.getSystem(xr::SystemGetInfo{m_formFactor});
 
         Log::Write(Log::Level::Verbose,
                    Fmt("Using system %d for form factor %s", get(m_systemId), to_string(m_formFactor).c_str()));
@@ -538,7 +537,7 @@ struct OpenXrProgram : IOpenXrProgram {
         CHECK_MSG(m_viewConfigType == xr::ViewConfigurationType::PrimaryStereo, "Unsupported view configuration type");
 
         // Query and cache view configuration views.
-        m_configViews = m_instance.enumerateViewConfigurationViewsToVector(m_systemId, xr::ViewConfigurationType(m_viewConfigType));
+        m_configViews = m_instance.enumerateViewConfigurationViewsToVector(m_systemId, m_viewConfigType);
 
         // Create and cache view buffer for xrLocateViews later.
         m_views.resize(m_configViews.size());
@@ -833,8 +832,7 @@ struct OpenXrProgram : IOpenXrProgram {
         for (auto hand : {Side::LEFT, Side::RIGHT}) {
             // need dispatch for disambiguation
             xr::SpaceLocation spaceLocation;
-            xr::Result res =
-                m_input.handSpace[hand].locateSpace(m_appSpace, xr::Time(predictedDisplayTime), spaceLocation, dispatch);
+            xr::Result res = m_input.handSpace[hand].locateSpace(m_appSpace, predictedDisplayTime, spaceLocation, dispatch);
             CHECK_XRRESULT(get(res), "xrLocateSpace");
             if (unqualifiedSuccess(res)) {
                 if ((spaceLocation.locationFlags & xr::SpaceLocationFlagBits::PositionValid) &&

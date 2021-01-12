@@ -694,18 +694,13 @@ struct OpenXrProgram : IOpenXrProgram {
         }
     }
 
-    void LogActionSourceName(XrAction action, const std::string& actionName) const {
-        XrBoundSourcesForActionEnumerateInfo getInfo = {XR_TYPE_BOUND_SOURCES_FOR_ACTION_ENUMERATE_INFO};
-        getInfo.action = action;
-        uint32_t pathCount = 0;
-        CHECK_XRCMD(xrEnumerateBoundSourcesForAction(m_session, &getInfo, 0, &pathCount, nullptr));
-        std::vector<XrPath> paths(pathCount);
-        CHECK_XRCMD(xrEnumerateBoundSourcesForAction(m_session, &getInfo, uint32_t(paths.size()), &pathCount, paths.data()));
-
+    void LogActionSourceName(xr::Action action, const std::string& actionName) const {
+        std::vector<xr::Path> paths = m_session.enumerateBoundSourcesForActionToVector({action});
+        const size_t pathCount = paths.size();
         std::string sourceName;
-        for (uint32_t i = 0; i < pathCount; ++i) {
-            std::string grabSource = xr::Session(m_session).getInputSourceLocalizedName(
-                {xr::Path(paths[i]), xr::InputSourceLocalizedNameFlagBits::AllBits});
+        for (size_t i = 0; i < pathCount; ++i) {
+            std::string grabSource =
+                m_session.getInputSourceLocalizedName({paths[i], xr::InputSourceLocalizedNameFlagBits::AllBits});
             if (grabSource.empty()) {
                 continue;
             }
